@@ -46,7 +46,7 @@ class AnthropicClient(BaseLLMClient):
             usage=Usage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                cost_usd=compute_cost(response.model, input_tokens, output_tokens),
+                cost_usd=compute_cost(response.model, input_tokens, output_tokens, fallback_model=model),
             ),
             latency_ms=latency_ms,
         )

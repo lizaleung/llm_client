@@ -39,7 +39,7 @@ class OpenAIClient(BaseLLMClient):
             usage=Usage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                cost_usd=compute_cost(actual_model, input_tokens, output_tokens),
+                cost_usd=compute_cost(actual_model, input_tokens, output_tokens, fallback_model=model),
             ),
             latency_ms=latency_ms,
         )

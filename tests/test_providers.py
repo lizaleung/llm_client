@@ -181,6 +181,27 @@ class TestOpenAIClient:
         assert abs(response.usage.cost_usd - 0.75) < 0.0001
 
     @patch("llm_client.providers.openai.openai.OpenAI")
+    def test_complete_costs_dated_model_id(self, mock_cls, messages):
+        # APIs return a dated/suffixed model ID that isn't a literal PRICING key.
+        mock_sdk = MagicMock()
+        mock_cls.return_value = mock_sdk
+
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message.content = "Hi"
+        mock_resp.model = "gpt-4o-2024-08-06"
+        mock_resp.usage.prompt_tokens = 1_000_000
+        mock_resp.usage.completion_tokens = 1_000_000
+        mock_sdk.chat.completions.create.return_value = mock_resp
+
+        client = OpenAIClient(model="gpt-4o")
+        response = client.complete(messages)
+
+        # Should resolve to gpt-4o pricing, not silently report $0.00.
+        # 1M input @ $2.50 + 1M output @ $10.00 = $12.50
+        assert abs(response.usage.cost_usd - 12.50) < 0.0001
+
+    @patch("llm_client.providers.openai.openai.OpenAI")
     def test_model_property(self, mock_cls):
         mock_cls.return_value = MagicMock()
         client = OpenAIClient(model="gpt-4o-mini")
