@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Callable, Generator, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -64,3 +64,29 @@ class LLMResponse(BaseModel):
     usage: Usage
     latency_ms: float
     cached: bool = False
+
+
+class StreamResult:
+    """Iterator of text chunks that also exposes usage after full consumption.
+
+    Provider ``stream()`` methods return this so middleware (e.g. ``CostTracker``)
+    can record token usage once the caller has drained the stream. ``model`` and
+    ``usage`` are ``None`` until iteration completes, and remain ``None`` if the
+    provider could not report usage.
+
+    The wrapped generator function should ``yield`` text chunks and ``return`` a
+    ``(model, Usage)`` tuple (or ``None``) as its final value.
+    """
+
+    def __init__(
+        self,
+        gen_fn: Callable[[], Generator[str, None, Optional[Tuple[str, "Usage"]]]],
+    ):
+        self._gen_fn = gen_fn
+        self.model: Optional[str] = None
+        self.usage: Optional[Usage] = None
+
+    def __iter__(self) -> Generator[str, None, None]:
+        result = yield from self._gen_fn()
+        if result:
+            self.model, self.usage = result

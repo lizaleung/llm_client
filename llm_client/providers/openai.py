@@ -1,10 +1,10 @@
 import time
-from typing import Iterator, List
+from typing import List
 
 import openai
 
 from ..base import BaseLLMClient
-from ..types import LLMResponse, Message, Usage, compute_cost
+from ..types import LLMResponse, Message, StreamResult, Usage, compute_cost
 
 DEFAULT_MODEL = "gpt-4o"
 
@@ -44,16 +44,41 @@ class OpenAIClient(BaseLLMClient):
             latency_ms=latency_ms,
         )
 
-    def stream(self, messages: List[Message], **kwargs) -> Iterator[str]:
+    def stream(self, messages: List[Message], **kwargs) -> StreamResult:
         model = kwargs.pop("model", self._model)
 
-        stream = self._client.chat.completions.create(
-            model=model,
-            messages=[m.model_dump() for m in messages],
-            stream=True,
-            **kwargs,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta.content:
-                yield delta.content
+        def _gen():
+            stream = self._client.chat.completions.create(
+                model=model,
+                messages=[m.model_dump() for m in messages],
+                stream=True,
+                stream_options={"include_usage": True},
+                **kwargs,
+            )
+            usage_obj = None
+            actual_model = model
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                chunk_usage = getattr(chunk, "usage", None)
+                if chunk_usage is not None:
+                    usage_obj = chunk_usage
+                    actual_model = getattr(chunk, "model", model) or model
+            try:
+                if usage_obj is not None:
+                    usage = Usage(
+                        input_tokens=usage_obj.prompt_tokens,
+                        output_tokens=usage_obj.completion_tokens,
+                        cost_usd=compute_cost(
+                            actual_model,
+                            usage_obj.prompt_tokens,
+                            usage_obj.completion_tokens,
+                            fallback_model=model,
+                        ),
+                    )
+                    return actual_model, usage
+            except Exception:
+                return None
+            return None
+
+        return StreamResult(_gen)

@@ -9,7 +9,18 @@ from llm_client.base import BaseLLMClient
 from llm_client.middleware.cache import CachedClient
 from llm_client.middleware.cost import CostTracker
 from llm_client.middleware.retry import RetryClient
-from llm_client.types import LLMResponse, Message, Usage
+from llm_client.types import LLMResponse, Message, StreamResult, Usage
+
+
+def make_stream_result(chunks, model="gpt-4o-mini", usage=None) -> StreamResult:
+    def _gen():
+        for c in chunks:
+            yield c
+        if usage is not None:
+            return model, usage
+        return None
+
+    return StreamResult(_gen)
 
 
 def make_response(content="Hello", model="gpt-4o-mini", input_tokens=10, output_tokens=5) -> LLMResponse:
@@ -114,6 +125,64 @@ class TestRetryClient:
         retry = RetryClient(client)
         assert retry.model == "my-model"
 
+    def test_retries_on_connection_error(self, messages):
+        call_count = 0
+        expected = make_response()
+
+        class APIConnectionError(Exception):
+            pass
+
+        def flaky(msgs, **kw):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise APIConnectionError("connection reset")
+            return expected
+
+        retry = RetryClient(_FakeClient(flaky), _wait=wait_none())
+        assert retry.complete(messages) is expected
+        assert call_count == 2
+
+    def test_retries_on_overloaded_status(self, messages):
+        call_count = 0
+        expected = make_response()
+
+        class _Overloaded(Exception):
+            status_code = 529
+
+        def flaky(msgs, **kw):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise _Overloaded()
+            return expected
+
+        retry = RetryClient(_FakeClient(flaky), _wait=wait_none())
+        assert retry.complete(messages) is expected
+        assert call_count == 2
+
+    def test_stream_retries_establishment(self, messages):
+        call_count = 0
+
+        class _FakeRateLimitError(Exception):
+            pass
+
+        def stream_fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise _FakeRateLimitError("rate limit")
+            return make_stream_result(["a", "b"])
+
+        client = _FakeClient(lambda *a, **kw: make_response())
+        client.stream = lambda *a, **kw: stream_fn()
+
+        retry = RetryClient(client, max_attempts=3, _wait=wait_none())
+        chunks = list(retry.stream(messages))
+
+        assert chunks == ["a", "b"]
+        assert call_count == 3
+
 
 # ---------------------------------------------------------------------------
 # CostTracker
@@ -176,6 +245,32 @@ class TestCostTracker:
         client = _FakeClient(lambda *a, **kw: make_response(), model_name="tracker-model")
         tracker = CostTracker(client)
         assert tracker.model == "tracker-model"
+
+    def test_records_stream_usage_after_consumption(self, messages):
+        usage = Usage(input_tokens=7, output_tokens=3, cost_usd=0.0012)
+        client = _FakeClient(lambda *a, **kw: make_response())
+        client.stream = lambda *a, **kw: make_stream_result(
+            ["Hel", "lo"], model="gpt-4o-mini", usage=usage
+        )
+        tracker = CostTracker(client)
+
+        stream = tracker.stream(messages)
+        assert tracker.call_count == 0  # nothing recorded until drained
+
+        chunks = list(stream)
+        assert chunks == ["Hel", "lo"]
+        assert tracker.call_count == 1
+        assert tracker.total_input_tokens == 7
+        assert tracker.total_output_tokens == 3
+        assert tracker.total_cost_usd == 0.0012
+
+    def test_stream_without_usage_records_nothing(self, messages):
+        client = _FakeClient(lambda *a, **kw: make_response())
+        client.stream = lambda *a, **kw: make_stream_result(["a", "b"], usage=None)
+        tracker = CostTracker(client)
+
+        list(tracker.stream(messages))
+        assert tracker.call_count == 0
 
 
 # ---------------------------------------------------------------------------

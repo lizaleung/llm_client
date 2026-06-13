@@ -1,5 +1,6 @@
+import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterator, List
 
 from rich.console import Console
@@ -41,7 +42,24 @@ class CostTracker(BaseLLMClient):
         return response
 
     def stream(self, messages: List[Message], **kwargs) -> Iterator[str]:
-        return self._client.stream(messages, **kwargs)
+        result = self._client.stream(messages, **kwargs)
+        start = time.perf_counter()
+
+        def _gen():
+            yield from result
+            usage = getattr(result, "usage", None)
+            if usage is not None:
+                self._records.append(
+                    _CallRecord(
+                        model=getattr(result, "model", None) or self.model,
+                        input_tokens=usage.input_tokens,
+                        output_tokens=usage.output_tokens,
+                        cost_usd=usage.cost_usd,
+                        latency_ms=(time.perf_counter() - start) * 1000,
+                    )
+                )
+
+        return _gen()
 
     @property
     def total_cost_usd(self) -> float:

@@ -91,6 +91,8 @@ class CachedClient(BaseLLMClient):
         return response
 
     def stream(self, messages: List[Message], **kwargs) -> Iterator[str]:
+        # Streaming responses are not cached: they are consumed lazily and a
+        # partially-drained stream can't be safely stored or replayed.
         return self._client.stream(messages, **kwargs)
 
     def clear_cache(self) -> None:

@@ -1,10 +1,10 @@
 import time
-from typing import Iterator, List
+from typing import List
 
 import anthropic
 
 from ..base import BaseLLMClient
-from ..types import LLMResponse, Message, Usage, compute_cost
+from ..types import LLMResponse, Message, StreamResult, Usage, compute_cost
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_MAX_TOKENS = 1024
@@ -51,7 +51,7 @@ class AnthropicClient(BaseLLMClient):
             latency_ms=latency_ms,
         )
 
-    def stream(self, messages: List[Message], **kwargs) -> Iterator[str]:
+    def stream(self, messages: List[Message], **kwargs) -> StreamResult:
         model = kwargs.pop("model", self._model)
         max_tokens = kwargs.pop("max_tokens", DEFAULT_MAX_TOKENS)
         system = kwargs.pop("system", None)
@@ -65,5 +65,23 @@ class AnthropicClient(BaseLLMClient):
         if system:
             stream_kwargs["system"] = system
 
-        with self._client.messages.stream(**stream_kwargs) as stream:
-            yield from stream.text_stream
+        def _gen():
+            with self._client.messages.stream(**stream_kwargs) as stream:
+                yield from stream.text_stream
+                try:
+                    final = stream.get_final_message()
+                    usage = Usage(
+                        input_tokens=final.usage.input_tokens,
+                        output_tokens=final.usage.output_tokens,
+                        cost_usd=compute_cost(
+                            final.model,
+                            final.usage.input_tokens,
+                            final.usage.output_tokens,
+                            fallback_model=model,
+                        ),
+                    )
+                    return final.model, usage
+                except Exception:
+                    return None
+
+        return StreamResult(_gen)
