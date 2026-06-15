@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from llm_client.providers.anthropic import AnthropicClient
+from llm_client.providers.gemini import GeminiClient
 from llm_client.providers.openai import OpenAIClient
 from llm_client.types import LLMResponse, Message
 
@@ -206,3 +207,92 @@ class TestOpenAIClient:
         mock_cls.return_value = MagicMock()
         client = OpenAIClient(model="gpt-4o-mini")
         assert client.model == "gpt-4o-mini"
+
+
+class TestGeminiClient:
+    @patch("llm_client.providers.gemini.genai.Client")
+    def test_complete_returns_llm_response(self, mock_cls, messages):
+        mock_sdk = MagicMock()
+        mock_cls.return_value = mock_sdk
+
+        mock_resp = MagicMock()
+        mock_resp.text = "Hello from Gemini"
+        mock_resp.model_version = "gemini-2.5-flash"
+        mock_resp.usage_metadata.prompt_token_count = 12
+        mock_resp.usage_metadata.candidates_token_count = 7
+        mock_sdk.models.generate_content.return_value = mock_resp
+
+        client = GeminiClient(model="gemini-2.5-flash")
+        response = client.complete(messages)
+
+        assert isinstance(response, LLMResponse)
+        assert response.content == "Hello from Gemini"
+        assert response.model == "gemini-2.5-flash"
+        assert response.usage.input_tokens == 12
+        assert response.usage.output_tokens == 7
+        assert response.usage.cost_usd >= 0
+        assert response.latency_ms >= 0
+        assert response.cached is False
+
+    @patch("llm_client.providers.gemini.genai.Client")
+    def test_complete_passes_model(self, mock_cls, messages):
+        mock_sdk = MagicMock()
+        mock_cls.return_value = mock_sdk
+
+        mock_resp = MagicMock()
+        mock_resp.text = "Hi"
+        mock_resp.model_version = "gemini-2.5-pro"
+        mock_resp.usage_metadata.prompt_token_count = 4
+        mock_resp.usage_metadata.candidates_token_count = 2
+        mock_sdk.models.generate_content.return_value = mock_resp
+
+        client = GeminiClient()
+        client.complete(messages, model="gemini-2.5-pro")
+
+        call_kwargs = mock_sdk.models.generate_content.call_args[1]
+        assert call_kwargs["model"] == "gemini-2.5-pro"
+
+    @patch("llm_client.providers.gemini.genai.Client")
+    def test_complete_computes_cost(self, mock_cls, messages):
+        mock_sdk = MagicMock()
+        mock_cls.return_value = mock_sdk
+
+        mock_resp = MagicMock()
+        mock_resp.text = "Hi"
+        mock_resp.model_version = "gemini-2.5-flash"
+        mock_resp.usage_metadata.prompt_token_count = 1_000_000
+        mock_resp.usage_metadata.candidates_token_count = 1_000_000
+        mock_sdk.models.generate_content.return_value = mock_resp
+
+        client = GeminiClient(model="gemini-2.5-flash")
+        response = client.complete(messages)
+
+        # 1M input @ $0.30 + 1M output @ $2.50 = $2.80
+        assert abs(response.usage.cost_usd - 2.80) < 0.0001
+
+    @patch("llm_client.providers.gemini.genai.Client")
+    def test_stream_yields_text(self, mock_cls, messages):
+        mock_sdk = MagicMock()
+        mock_cls.return_value = mock_sdk
+
+        def make_chunk(text):
+            c = MagicMock()
+            c.text = text
+            c.usage_metadata = None
+            c.model_version = "gemini-2.5-flash"
+            return c
+
+        mock_sdk.models.generate_content_stream.return_value = iter(
+            [make_chunk("Hello"), make_chunk(" world")]
+        )
+
+        client = GeminiClient()
+        chunks = list(client.stream(messages))
+
+        assert chunks == ["Hello", " world"]
+
+    @patch("llm_client.providers.gemini.genai.Client")
+    def test_model_property(self, mock_cls):
+        mock_cls.return_value = MagicMock()
+        client = GeminiClient(model="gemini-2.0-flash")
+        assert client.model == "gemini-2.0-flash"

@@ -20,6 +20,7 @@ Switch providers instantly:
 
 ```python
 client = get_client("openai", model="gpt-4o-mini")
+client = get_client("gemini", model="gemini-2.5-flash")
 ```
 
 ## Middleware
@@ -101,6 +102,9 @@ client = CachedClient(base, enabled=True)
 | claude-haiku-4-5-20251001    | $0.80       | $4.00        |
 | gpt-4o                       | $2.50       | $10.00       |
 | gpt-4o-mini                  | $0.15       | $0.60        |
+| gemini-2.5-pro               | $1.25       | $10.00       |
+| gemini-2.5-flash             | $0.30       | $2.50        |
+| gemini-2.0-flash             | $0.10       | $0.40        |
 
 ## Installation
 
