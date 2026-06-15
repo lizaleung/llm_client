@@ -1,8 +1,12 @@
 import time
 from typing import List, Optional
 
-from google import genai
-from google.genai import types as genai_types
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:  # pragma: no cover - exercised via instantiation error
+    genai = None
+    genai_types = None
 
 from ..base import BaseLLMClient
 from ..types import LLMResponse, Message, StreamResult, Usage, compute_cost
@@ -52,6 +56,11 @@ def _usage_from(metadata, model: str, requested_model: str) -> Usage:
 
 class GeminiClient(BaseLLMClient):
     def __init__(self, model: str = DEFAULT_MODEL, api_key: str | None = None):
+        if genai is None:
+            raise ImportError(
+                "The 'google-genai' package is required for GeminiClient. "
+                "Install it with: pip install google-genai"
+            )
         self._model = model
         self._client = genai.Client(api_key=api_key)
 

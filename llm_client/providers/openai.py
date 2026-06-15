@@ -1,7 +1,10 @@
 import time
 from typing import List
 
-import openai
+try:
+    import openai
+except ImportError:  # pragma: no cover - exercised via instantiation error
+    openai = None
 
 from ..base import BaseLLMClient
 from ..types import LLMResponse, Message, StreamResult, Usage, compute_cost
@@ -11,6 +14,11 @@ DEFAULT_MODEL = "gpt-4o"
 
 class OpenAIClient(BaseLLMClient):
     def __init__(self, model: str = DEFAULT_MODEL, api_key: str | None = None):
+        if openai is None:
+            raise ImportError(
+                "The 'openai' package is required for OpenAIClient. "
+                "Install it with: pip install openai"
+            )
         self._model = model
         self._client = openai.OpenAI(api_key=api_key)
 

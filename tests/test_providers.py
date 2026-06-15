@@ -296,3 +296,20 @@ class TestGeminiClient:
         mock_cls.return_value = MagicMock()
         client = GeminiClient(model="gemini-2.0-flash")
         assert client.model == "gemini-2.0-flash"
+
+
+class TestMissingSdk:
+    def test_anthropic_missing_sdk_raises_helpful_error(self):
+        with patch("llm_client.providers.anthropic.anthropic", None):
+            with pytest.raises(ImportError, match="pip install anthropic"):
+                AnthropicClient()
+
+    def test_openai_missing_sdk_raises_helpful_error(self):
+        with patch("llm_client.providers.openai.openai", None):
+            with pytest.raises(ImportError, match="pip install openai"):
+                OpenAIClient()
+
+    def test_gemini_missing_sdk_raises_helpful_error(self):
+        with patch("llm_client.providers.gemini.genai", None):
+            with pytest.raises(ImportError, match="pip install google-genai"):
+                GeminiClient()

@@ -1,7 +1,10 @@
 import time
 from typing import List
 
-import anthropic
+try:
+    import anthropic
+except ImportError:  # pragma: no cover - exercised via instantiation error
+    anthropic = None
 
 from ..base import BaseLLMClient
 from ..types import LLMResponse, Message, StreamResult, Usage, compute_cost
@@ -12,6 +15,11 @@ DEFAULT_MAX_TOKENS = 1024
 
 class AnthropicClient(BaseLLMClient):
     def __init__(self, model: str = DEFAULT_MODEL, api_key: str | None = None):
+        if anthropic is None:
+            raise ImportError(
+                "The 'anthropic' package is required for AnthropicClient. "
+                "Install it with: pip install anthropic"
+            )
         self._model = model
         self._client = anthropic.Anthropic(api_key=api_key)
 
