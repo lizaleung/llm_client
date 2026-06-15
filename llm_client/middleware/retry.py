@@ -67,6 +67,9 @@ class RetryClient(BaseLLMClient):
         ):
             with attempt:
                 return self._client.complete(messages, **kwargs)
+        # Unreachable: Retrying either returns from the block above or re-raises
+        # the last exception (reraise=True). Guards the implicit-None fall-through.
+        raise RuntimeError("RetryClient.complete exhausted retries without a result")
 
     def stream(self, messages: List[Message], **kwargs) -> Iterator[str]:
         # Only stream *establishment* (opening the connection and producing the
@@ -86,6 +89,8 @@ class RetryClient(BaseLLMClient):
                     except StopIteration:
                         return iterator, None, True
                     return iterator, first, False
+            # Unreachable: see complete().
+            raise RuntimeError("RetryClient.stream exhausted retries without a result")
 
         def _generator():
             iterator, first, empty = _establish()
