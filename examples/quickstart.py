@@ -53,14 +53,25 @@ print()
 base = get_client("openai", model="gpt-4o-mini")
 tracked = CostTracker(base)
 with_retry = RetryClient(tracked)
-with_cache = CachedClient(with_retry)
+# enabled=True turns the cache on regardless of the CACHE_ENABLED env var.
+with_cache = CachedClient(with_retry, enabled=True)
 
 print("\n--- With middleware ---")
 r = with_cache.complete([Message(role="user", content="Say hello in one word.")])
 print(r.content)
 
-# second call hits the cache
+# second identical call is served from the cache (no API call)
 r2 = with_cache.complete([Message(role="user", content="Say hello in one word.")])
 print(f"Cached: {r2.cached}")
 
 tracked.print_summary()
+
+# ---------------------------------------------------------------------------
+# 4. Switching providers — same interface, one line changes
+# ---------------------------------------------------------------------------
+
+print("\n--- Gemini ---")
+gemini = get_client("gemini", model="gemini-2.5-flash")
+g = gemini.complete([Message(role="user", content="What is 2 + 2?")])
+print(g.content)
+print(f"Cost: ${g.usage.cost_usd:.6f}  Latency: {g.latency_ms:.0f}ms")

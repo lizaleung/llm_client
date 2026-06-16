@@ -17,7 +17,9 @@ def _cache_key(model: str, messages: List[Message], kwargs: dict) -> str:
         "messages": [m.model_dump() for m in messages],
         "kwargs": {k: v for k, v in sorted(kwargs.items())},
     }
-    key_str = json.dumps(key_data, sort_keys=True)
+    # default=str keeps key construction from raising on values json can't
+    # serialize natively (e.g. enums, pydantic models passed as kwargs).
+    key_str = json.dumps(key_data, sort_keys=True, default=str)
     return hashlib.sha256(key_str.encode()).hexdigest()
 
 

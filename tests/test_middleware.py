@@ -350,3 +350,27 @@ class TestCachedClient:
         client = _FakeClient(lambda *a, **kw: make_response(), model_name="cache-model")
         cached = CachedClient(client, enabled=False, db_path=tmp_path / "c.db")
         assert cached.model == "cache-model"
+
+    def test_non_serializable_kwarg_does_not_crash(self, messages, tmp_path):
+        import enum
+
+        class Format(enum.Enum):
+            JSON = "json"
+
+        call_count = 0
+
+        def fn(msgs, **kw):
+            nonlocal call_count
+            call_count += 1
+            return make_response()
+
+        client = _FakeClient(fn, model_name="gpt-4o-mini")
+        cached = CachedClient(client, enabled=True, db_path=tmp_path / "c.db")
+
+        # An enum kwarg isn't JSON-serializable; key construction must not raise,
+        # and identical calls must still hit the cache.
+        cached.complete(messages, model="gpt-4o-mini", response_format=Format.JSON)
+        r2 = cached.complete(messages, model="gpt-4o-mini", response_format=Format.JSON)
+
+        assert call_count == 1
+        assert r2.cached
